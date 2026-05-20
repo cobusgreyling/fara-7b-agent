@@ -1,0 +1,31 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install lint and test deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff pytest
+
+      - name: Ruff
+        run: ruff check fara tests
+
+      - name: Pytest
+        # llama-cpp-python and playwright are intentionally not installed
+        # in CI — model.py and executor.py import them lazily, and the test
+        # suite covers parser.py (pure stdlib) only.
+        run: pytest tests -q
