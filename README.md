@@ -12,6 +12,10 @@ Fara-7B is Microsoft's open-weights agentic SLM released in November 2025. It is
 
 The defining property: **the agent loop is baked into the weights**. The system prompt, action vocabulary, output format, and stop-at-critical-point behavior are all part of the model. The harness around it is small and dumb.
 
+## Architecture
+
+![Architecture](docs/architecture.jpg)
+
 ## What this repo gives you
 
 - `fara/` — the harness package
