@@ -1,0 +1,26 @@
+# Model weights (download via scripts/download_model.sh)
+models/
+*.gguf
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+
+# Playwright
+.playwright/
+
+# Runtime screenshots (examples/ are kept; runtime captures are not)
+runs/
+*.png
+!examples/**/*.png
+
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/

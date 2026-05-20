@@ -1,0 +1,27 @@
+{
+  "task": "Find the cheapest flight from Cape Town to London next Friday with BA.",
+  "start_url": "https://www.google.com",
+  "model": "bartowski/microsoft_Fara-7B-GGUF Q4_K_M",
+  "mmproj": "mmproj-microsoft_Fara-7B-f16.gguf",
+  "hardware": "Apple M2 Pro, 16 GB RAM, Metal",
+  "viewport": [1280, 800],
+  "vision_tokens": 1334,
+  "turns": [
+    {
+      "turn": 1,
+      "screenshot": "turn_01.png",
+      "raw_output": "Navigate directly to British Airways website to search flights\n<tool_call>\n{\"name\": \"B\", \"arguments\": {\"action\": \"visit\", \"url\": \"https://www.britishairways.com/\"}}\n</tool_call>",
+      "parsed_thought": "Navigate directly to British Airways website to search flights",
+      "parsed_action": {
+        "name": "visit_url",
+        "arguments": {
+          "url": "https://www.britishairways.com/"
+        }
+      },
+      "generation_time_s": 25.4,
+      "completion_tokens": 44,
+      "notes": "Model emitted wrapper name 'B' (quantisation artifact). Action verb 'visit' is normalised to 'visit_url' via parser alias map. Faced with google.com, the model chose to navigate straight to BA rather than searching — it inferred the destination domain from the user's 'with BA' hint."
+    }
+  ],
+  "finished": "single-turn demo (full loop not run for this example)"
+}

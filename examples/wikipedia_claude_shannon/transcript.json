@@ -1,0 +1,30 @@
+{
+  "task": "Find the Wikipedia article about Claude Shannon.",
+  "start_url": "https://en.wikipedia.org/wiki/Main_Page",
+  "model": "bartowski/microsoft_Fara-7B-GGUF Q4_K_M",
+  "mmproj": "mmproj-microsoft_Fara-7B-f16.gguf",
+  "hardware": "Apple M2 Pro, 16 GB RAM, Metal",
+  "viewport": [1280, 800],
+  "vision_tokens": 1334,
+  "turns": [
+    {
+      "turn": 1,
+      "screenshot": "turn_01.png",
+      "raw_output": "Entering 'Claude Shannon' into the search bar is the most direct way to retrieve the Wikipedia article for Claude Shannon.\n<tool_call>\n{\"name\": \"Rasa\", \"arguments\": {\"action\": \"type\", \"text\": \"Claude Shannon\", \"input_target\": \"search_input\", \"press_enter\": true, \"delete_existing_text\": true}}\n</tool_call>",
+      "parsed_thought": "Entering 'Claude Shannon' into the search bar is the most direct way to retrieve the Wikipedia article for Claude Shannon.",
+      "parsed_action": {
+        "name": "type",
+        "arguments": {
+          "text": "Claude Shannon",
+          "input_target": "search_input",
+          "press_enter": true,
+          "delete_existing_text": true
+        }
+      },
+      "generation_time_s": 47.4,
+      "completion_tokens": 73,
+      "notes": "Model emitted wrapper name 'Rasa' (quantisation artifact). Parser dispatches on inner 'action' field. The 'input_target' style is one of two ways Fara grounds typing — the other is coordinate-based."
+    }
+  ],
+  "finished": "single-turn demo (full loop not run for this example)"
+}
