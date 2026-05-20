@@ -26,7 +26,7 @@ The defining property: **the agent loop is baked into the weights**. The system 
   - `agent.py` — the screenshot → infer → parse → execute → repeat loop
 - `run.py` — CLI entry: `python run.py "your task"`
 - `scripts/download_model.sh` — pulls the Q4_K_M quantisation and vision projector from Hugging Face
-- `examples/` — recorded multi-turn runs with screenshots and JSON transcripts
+- `examples/` — recorded inference turns with screenshots and JSON transcripts (single-turn samples; longer runs land in `runs/` when you execute the harness)
 
 ## Hardware
 

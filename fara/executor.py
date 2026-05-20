@@ -1,37 +1,52 @@
 """Playwright-backed executor for Fara-7B's action vocabulary.
 
-Each Fara action maps to a Playwright operation. After executing,
-the browser is given a short settle period and a fresh screenshot is
-captured for the next turn.
+Each Fara action maps to a Playwright operation. The browser is locked to
+`device_scale_factor=1` so screenshot pixels align 1:1 with the viewport —
+model-emitted coordinates are in screenshot pixel space.
 """
 from __future__ import annotations
 
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote_plus
 
 from playwright.sync_api import Page, sync_playwright
 
-SETTLE_MS = 1500
+DEFAULT_VIEWPORT = (1280, 800)
+DEFAULT_SETTLE_MS = 1500
 
-
-COMMON_SEARCH_SELECTORS = [
-    "input[type='search']",
-    "input[name='q']",
-    "input[name='search']",
-    "input[aria-label*='earch']",
-    "textarea[name='q']",
-]
+# URL patterns that mark a likely Critical Point. These are checked against
+# `page.url` at the moment of an action; substring match is intentional —
+# false positives are preferred to false negatives at a checkout boundary.
+CRITICAL_URL_PATTERNS = (
+    "/checkout",
+    "/payment",
+    "/pay/",
+    "/order/place",
+    "/cart/confirm",
+    "/signup",
+    "/sign-up",
+    "/register",
+)
 
 
 class BrowserExecutor:
-    def __init__(self, headless: bool = False, viewport: tuple[int, int] = (1280, 800)):
+    def __init__(
+        self,
+        headless: bool = False,
+        viewport: tuple[int, int] = DEFAULT_VIEWPORT,
+        settle_ms: int = DEFAULT_SETTLE_MS,
+    ):
         self._pw = sync_playwright().start()
         self._browser = self._pw.chromium.launch(headless=headless)
         self._context = self._browser.new_context(
-            viewport={"width": viewport[0], "height": viewport[1]}
+            viewport={"width": viewport[0], "height": viewport[1]},
+            device_scale_factor=1,
         )
         self.page: Page = self._context.new_page()
+        self.viewport = viewport
+        self.settle_ms = settle_ms
 
     def close(self) -> None:
         self._context.close()
@@ -43,6 +58,19 @@ class BrowserExecutor:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.page.screenshot(path=str(path), full_page=False)
         return path
+
+    def settle(self) -> None:
+        """Wait for the page to settle. `domcontentloaded` is fast and
+        reliable; `networkidle` is best-effort and allowed to time out on
+        sites with persistent connections (analytics, chat widgets)."""
+        try:
+            self.page.wait_for_load_state("networkidle", timeout=self.settle_ms)
+        except Exception:
+            self.page.wait_for_timeout(self.settle_ms)
+
+    def at_critical_url(self) -> bool:
+        url = (self.page.url or "").lower()
+        return any(p in url for p in CRITICAL_URL_PATTERNS)
 
     def execute(self, action_name: str, arguments: dict[str, Any]) -> str:
         """Execute a Fara action. Returns a short status string."""
@@ -58,7 +86,7 @@ class BrowserExecutor:
         except Exception as e:
             return f"error executing {action_name}: {e}"
 
-        self.page.wait_for_timeout(SETTLE_MS)
+        self.settle()
         return result or "ok"
 
     # ---- individual action handlers ------------------------------------
@@ -69,7 +97,8 @@ class BrowserExecutor:
 
     def _act_web_search(self, query: str, **_: Any) -> str:
         self.page.goto(
-            f"https://www.google.com/search?q={query}", wait_until="domcontentloaded"
+            f"https://www.google.com/search?q={quote_plus(query)}",
+            wait_until="domcontentloaded",
         )
         return f"searched: {query}"
 
@@ -80,8 +109,7 @@ class BrowserExecutor:
         y: int | None = None,
         **_: Any,
     ) -> str:
-        if coordinate is not None:
-            x, y = coordinate[0], coordinate[1]
+        x, y = self._resolve_xy(coordinate, x, y)
         if x is None or y is None:
             return "click missing coordinate"
         self.page.mouse.click(x, y)
@@ -94,8 +122,7 @@ class BrowserExecutor:
         y: int | None = None,
         **_: Any,
     ) -> str:
-        if coordinate is not None:
-            x, y = coordinate[0], coordinate[1]
+        x, y = self._resolve_xy(coordinate, x, y)
         if x is None or y is None:
             return "move missing coordinate"
         self.page.mouse.move(x, y)
@@ -111,7 +138,9 @@ class BrowserExecutor:
         **_: Any,
     ) -> str:
         if coordinate is not None:
-            self.page.mouse.click(coordinate[0], coordinate[1])
+            x, y = self._resolve_xy(coordinate, None, None)
+            if x is not None and y is not None:
+                self.page.mouse.click(x, y)
         elif input_target is not None:
             target = self._find_input(input_target)
             if target is None:
@@ -120,7 +149,7 @@ class BrowserExecutor:
         # else: type at currently focused element
 
         if delete_existing_text:
-            self.page.keyboard.press("Meta+A")
+            self.page.keyboard.press("ControlOrMeta+A")
             self.page.keyboard.press("Delete")
 
         self.page.keyboard.type(text)
@@ -141,7 +170,9 @@ class BrowserExecutor:
     ) -> str:
         dy = amount if direction == "down" else -amount
         if coordinate is not None:
-            self.page.mouse.move(coordinate[0], coordinate[1])
+            x, y = self._resolve_xy(coordinate, None, None)
+            if x is not None and y is not None:
+                self.page.mouse.move(x, y)
         self.page.mouse.wheel(0, dy)
         return f"scrolled {direction} {amount}"
 
@@ -154,6 +185,8 @@ class BrowserExecutor:
         return f"waited {seconds}s"
 
     def _act_pause_and_memorize_fact(self, fact: str = "", **_: Any) -> str:
+        # The fact is surfaced in the status string and harvested by the agent
+        # loop so it can be re-injected into the next turn's user text.
         return f"memorised: {fact}"
 
     def _act_terminate(self, **_: Any) -> str:
@@ -161,18 +194,53 @@ class BrowserExecutor:
 
     # ---- helpers -------------------------------------------------------
 
+    def _resolve_xy(
+        self,
+        coordinate: list[int] | tuple[int, int] | None,
+        x: int | None,
+        y: int | None,
+    ) -> tuple[int | None, int | None]:
+        if coordinate is not None and len(coordinate) >= 2:
+            x, y = coordinate[0], coordinate[1]
+        if x is None or y is None:
+            return None, None
+        # Clamp to viewport. Quantised models occasionally emit out-of-range
+        # coords; clamping prevents the click from being silently dropped.
+        w, h = self.viewport
+        cx = max(0, min(int(x), w - 1))
+        cy = max(0, min(int(y), h - 1))
+        return cx, cy
+
     def _find_input(self, hint: str):
-        for sel in COMMON_SEARCH_SELECTORS:
-            loc = self.page.locator(sel).first
+        """Locate an input matching `hint`. Hint-based locators are tried
+        first (label, placeholder, accessible name); generic search-input
+        selectors are the fallback."""
+        if hint:
+            candidates = [
+                lambda: self.page.get_by_label(hint, exact=False).first,
+                lambda: self.page.get_by_placeholder(hint).first,
+                lambda: self.page.get_by_role("textbox", name=hint).first,
+                lambda: self.page.get_by_role("searchbox", name=hint).first,
+            ]
+            for build in candidates:
+                try:
+                    loc = build()
+                    if loc.is_visible(timeout=500):
+                        return loc
+                except Exception:
+                    continue
+
+        for sel in (
+            "input[type='search']",
+            "input[name='q']",
+            "input[name='search']",
+            "input[aria-label*='earch']",
+            "textarea[name='q']",
+        ):
             try:
+                loc = self.page.locator(sel).first
                 if loc.is_visible(timeout=500):
                     return loc
             except Exception:
                 continue
-        try:
-            loc = self.page.get_by_placeholder(hint).first
-            if loc.is_visible(timeout=500):
-                return loc
-        except Exception:
-            pass
         return None
