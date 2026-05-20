@@ -5,9 +5,6 @@ import base64
 from pathlib import Path
 from typing import Any
 
-from llama_cpp import Llama
-from llama_cpp.llama_chat_format import Qwen25VLChatHandler
-
 from .prompt import SYSTEM_PROMPT
 
 DEFAULT_MODEL = Path(__file__).resolve().parent.parent / "models" / "model.gguf"
@@ -30,6 +27,9 @@ class FaraModel:
         n_gpu_layers: int = -1,
         verbose: bool = False,
     ):
+        from llama_cpp import Llama
+        from llama_cpp.llama_chat_format import Qwen25VLChatHandler
+
         handler = Qwen25VLChatHandler(clip_model_path=str(mmproj_path), verbose=verbose)
         self.llm = Llama(
             model_path=str(model_path),

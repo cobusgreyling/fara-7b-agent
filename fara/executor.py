@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote_plus
 
-from playwright.sync_api import Page, sync_playwright
+if TYPE_CHECKING:
+    from playwright.sync_api import Page
 
 DEFAULT_VIEWPORT = (1280, 800)
 DEFAULT_SETTLE_MS = 1500
@@ -38,6 +39,8 @@ class BrowserExecutor:
         viewport: tuple[int, int] = DEFAULT_VIEWPORT,
         settle_ms: int = DEFAULT_SETTLE_MS,
     ):
+        from playwright.sync_api import sync_playwright
+
         self._pw = sync_playwright().start()
         self._browser = self._pw.chromium.launch(headless=headless)
         self._context = self._browser.new_context(
