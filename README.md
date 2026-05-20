@@ -1,3 +1,5 @@
+![Microsoft Fara-7B](docs/header.jpg)
+
 # fara-7b-agent
 
 A minimal, fully-local agent harness for **Microsoft Fara-7B** — the 7-billion-parameter agentic small language model for computer use.
