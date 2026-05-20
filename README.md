@@ -24,9 +24,11 @@ The defining property: **the agent loop is baked into the weights**. The system 
   - `parser.py` — extracts thought and tool_call from the model output, with normalisation for quantisation-induced name drift
   - `executor.py` — Playwright-backed dispatcher for Fara's action vocabulary
   - `agent.py` — the screenshot → infer → parse → execute → repeat loop
-- `run.py` — CLI entry: `python run.py "your task"`
-- `scripts/download_model.sh` — pulls the Q4_K_M quantisation and vision projector from Hugging Face
-- `examples/` — recorded inference turns with screenshots and JSON transcripts (single-turn samples; longer runs land in `runs/` when you execute the harness)
+  - `viewer.py` — renders a run's `transcript.json` into a static `transcript.html`
+  - `cli.py` — the argparse front-end shared by `run.py` and the installed `fara-agent` console script
+- `run.py` — source-tree entrypoint; `pip install .` also exposes a `fara-agent` CLI
+- `scripts/download_model.sh` — pulls a GGUF quantisation and vision projector from Hugging Face; pass `--quant Q5_K_M` or `--quant Q8_0` for higher fidelity
+- `examples/` — recorded inference turns, JSON transcripts, and `failure_modes.md`
 
 ## Hardware
 
@@ -83,6 +85,19 @@ Quantised versions of Fara sometimes drift the wrapper name (emit `"name": "B"` 
 ## Critical Points
 
 Fara-7B was trained to **stop at Critical Points** — checkout, payment, send-email, place-call, sign-up, etc. When the model pauses, the harness surfaces the situation and waits for a human decision. This is enforced by the system prompt baked into the model.
+
+The harness adds a belt-and-braces check on top: if the page URL matches one of `CRITICAL_URL_PATTERNS` (`/checkout`, `/payment`, `/signup`, …) **and** the next action is a committing one (`left_click`, `type`+`press_enter`, `key:Enter`), the loop pauses before dispatching. With `--interactive`, the harness prints the proposed action and prompts y/n; with the default non-interactive mode, the loop exits and the partial transcript is saved.
+
+## Tracing a run
+
+Every run writes `transcript.json` + `turn_NN.png` to the run directory. Pass `--viewer` to also emit a static `transcript.html` you can open in a browser:
+
+```bash
+python run.py "..." --viewer
+open runs/latest/transcript.html
+```
+
+Per-turn `infer_ms` and `executor_ms` are captured into the transcript so you can spot the slow turn.
 
 ## License
 

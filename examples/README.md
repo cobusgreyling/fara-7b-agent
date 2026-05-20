@@ -32,3 +32,10 @@ Both examples show the Q4_K_M quant drifting the wrapper `name` field
 parser dispatches on the inner `action` field, so wrapper drift does
 not affect execution. Action verbs also drift (`"visit"` instead of
 `"visit_url"`); the parser normalises common aliases.
+
+## Failure modes
+
+`failure_modes.md` documents the seven rough edges you will hit on a long
+enough run — wrapper-name drift, hallucinated coordinates, SPA confusion,
+context-window exhaustion, and the rest — and what the harness does about
+each one. Read this before debugging an unexpected stall.
