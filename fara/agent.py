@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,8 @@ class TurnRecord:
     thought: str
     action: dict[str, Any] | None
     status: str
+    infer_ms: int = 0
+    executor_ms: int = 0
 
 
 @dataclass
@@ -59,6 +63,8 @@ class FaraAgent:
         start_url: str = "https://www.google.com",
         max_turns: int = 15,
         history_image_window: int = HISTORY_IMAGE_WINDOW,
+        interactive: bool = False,
+        approval_fn: Callable[[FaraTurn, str], bool] | None = None,
     ):
         self.model = model
         self.executor = executor
@@ -67,6 +73,9 @@ class FaraAgent:
         self.start_url = start_url
         self.max_turns = max_turns
         self.history_image_window = history_image_window
+        self.interactive = interactive
+        # Injectable for testing; defaults to a TTY y/n prompt.
+        self.approval_fn = approval_fn or _stdin_approve
 
     def run(self, task: str) -> RunRecord:
         record = RunRecord(task=task)
@@ -82,12 +91,14 @@ class FaraAgent:
             self.executor.screenshot(shot)
 
             history = self._build_history(task, turn_log)
+            t0 = time.perf_counter()
             raw = self.model.step(
                 task=task,
                 screenshot_path=shot,
                 history=history,
                 notes=notes,
             )
+            infer_ms = int((time.perf_counter() - t0) * 1000)
             parsed: FaraTurn = parse(raw)
 
             print(f"\n=== TURN {turn_idx} ===")
@@ -99,7 +110,7 @@ class FaraAgent:
 
             if parsed.action is None:
                 record.turns.append(
-                    TurnRecord(turn_idx, str(shot), parsed.thought, None, "no_action")
+                    TurnRecord(turn_idx, str(shot), parsed.thought, None, "no_action", infer_ms=infer_ms)
                 )
                 record.finished = "model returned no tool_call"
                 self._save(record, notes)
@@ -107,7 +118,14 @@ class FaraAgent:
 
             if parsed.action.name == "terminate":
                 record.turns.append(
-                    TurnRecord(turn_idx, str(shot), parsed.thought, _action_dict(parsed), "terminated")
+                    TurnRecord(
+                        turn_idx,
+                        str(shot),
+                        parsed.thought,
+                        _action_dict(parsed),
+                        "terminated",
+                        infer_ms=infer_ms,
+                    )
                 )
                 record.finished = "model emitted terminate"
                 self._save(record, notes)
@@ -116,23 +134,34 @@ class FaraAgent:
             if self.executor.at_critical_url() and _is_committing(
                 parsed.action.name, parsed.action.arguments
             ):
-                record.turns.append(
-                    TurnRecord(
-                        turn_idx,
-                        str(shot),
-                        parsed.thought,
-                        _action_dict(parsed),
-                        "critical_point_pause",
+                current_url = self.executor.page.url
+                approved = False
+                if self.interactive:
+                    print("\n*** Critical Point — human approval required ***")
+                    approved = self.approval_fn(parsed, current_url)
+                if not approved:
+                    record.turns.append(
+                        TurnRecord(
+                            turn_idx,
+                            str(shot),
+                            parsed.thought,
+                            _action_dict(parsed),
+                            "critical_point_pause",
+                            infer_ms=infer_ms,
+                        )
                     )
-                )
-                record.finished = (
-                    f"paused at Critical Point ({self.executor.page.url}) — human input required"
-                )
-                print("\n*** Critical Point reached — pausing for human input ***")
-                self._save(record, notes)
-                break
+                    record.finished = (
+                        f"paused at Critical Point ({current_url}) — human input required"
+                    )
+                    if not self.interactive:
+                        print("\n*** Critical Point reached — pausing for human input ***")
+                    self._save(record, notes)
+                    break
+                # Approved — fall through and execute.
 
+            t1 = time.perf_counter()
             status = self.executor.execute(parsed.action.name, parsed.action.arguments)
+            executor_ms = int((time.perf_counter() - t1) * 1000)
             print(f"status:  {status}")
 
             if parsed.action.name == "pause_and_memorize_fact":
@@ -141,7 +170,15 @@ class FaraAgent:
                     notes.append(fact)
 
             record.turns.append(
-                TurnRecord(turn_idx, str(shot), parsed.thought, _action_dict(parsed), status)
+                TurnRecord(
+                    turn_idx,
+                    str(shot),
+                    parsed.thought,
+                    _action_dict(parsed),
+                    status,
+                    infer_ms=infer_ms,
+                    executor_ms=executor_ms,
+                )
             )
             turn_log.append((shot, raw))
             self._save(record, notes)
@@ -198,3 +235,17 @@ def _action_dict(parsed: FaraTurn) -> dict[str, Any] | None:
     if parsed.action is None:
         return None
     return {"name": parsed.action.name, "arguments": parsed.action.arguments}
+
+
+def _stdin_approve(parsed: FaraTurn, url: str) -> bool:
+    """Default approval prompt: print the proposed action and read y/n from stdin."""
+    action = parsed.action
+    action_name = action.name if action else "(none)"
+    args = action.arguments if action else {}
+    print(f"  url:    {url}")
+    print(f"  action: {action_name} {args}")
+    try:
+        reply = input("Approve and continue? [y/N] ").strip().lower()
+    except EOFError:
+        return False
+    return reply in {"y", "yes"}

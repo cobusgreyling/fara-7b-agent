@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fara-7b-agent"
+version = "0.1.0"
+description = "Minimal, fully-local agent harness for Microsoft Fara-7B."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Cobus Greyling" }]
+requires-python = ">=3.10"
+keywords = ["fara", "agentic-ai", "computer-use", "local-llm", "playwright", "qwen2.5-vl", "slm"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+]
+dependencies = [
+    "llama-cpp-python~=0.3.23",
+    "playwright~=1.49",
+    "pillow~=10.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+fara-agent = "fara.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/cobusgreyling/fara-7b-agent"
+Source   = "https://github.com/cobusgreyling/fara-7b-agent"
+
+[tool.setuptools.packages.find]
+include = ["fara*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
